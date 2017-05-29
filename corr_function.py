@@ -101,11 +101,10 @@ def xi_or(x,y,z, type_cuts, density_cuts, input_path):
             
         else:
             print "Error: select the correct parameters!"
-    
-def xi_ll(x,y,z, type_cuts, density_cuts, input_path):    
+
+def xi_ll(x,y,z, type_cuts, density_cuts, input_path, Shuffle = False):   
     import numpy as np
-    import SPack as SP
-    
+    import os
     Dmin = -2.0 # Min Log distance in Mpc
     Dmax =  2.0 # Max Log distance in Mpc
     NBIN =  40  # Number of bins
@@ -124,99 +123,117 @@ def xi_ll(x,y,z, type_cuts, density_cuts, input_path):
         Den = Ngal/(500.**3)
         rr = Vol*Den*Ngal
         return rr
-
-    if (type(type_cuts) == list) or (type(density_cuts) == list):
-        Len_densities, Len_types = 1, 1
-        
-        if type(density_cuts) == list: Len_densities = len(density_cuts)
-        if type(type_cuts) == list: Len_types = len(type_cuts)
-        
-        DD = np.zeros((Len_types, Len_densities, NBIN)).astype('int32')
-        RR_array = np.zeros((Len_types, Len_densities, NBIN)).astype('float64')
-        
-        if Len_densities == 1: density_cuts = [density_cuts]
-        if Len_types == 1: type_cuts = [type_cuts]
-        
-        for i, Type in enumerate(type_cuts):
-            for j, Den in enumerate(density_cuts):
-                if Type == 'Mstell' and Den <= 4 and Den > 0:
-                    pos = int(Den * 5)
-                    data  = np.loadtxt(input_path + '/density_data.txt')
-                    Log_Den, mass_cut = data[pos][0], data[pos][1]
-                    
-                    m_data = np.load(input_path + '/stellarmass.npy')
-                    mask = m_data > mass_cut
-                    
-                    x_m = x[mask]
-                    y_m = y[mask]
-                    z_m = z[mask]
-                    N = len(x_m)
-                
-                    #DD = np.zeros(NBIN).astype('int32')
-                    SP.xi2(DD[i][j], x_m, y_m, z_m, N, Dmin, Dmax, NBIN, iNBin, ilim)
-                    print i,j
-                    RR_array[i][j] = np.array([RR(r, N, Bw) for r in bins])
-                    print "Sali!"
-
-                    #np.savetxt(output_path + '/%s_d%i.txt' %(type_cut, density_cut), np.array([bins_p, DD, RR])
-                    
-                if Type == 'SFR' and Den <= 4 and Den > 0:
-                    pos = int(Den * 5)
-                    data  = np.loadtxt(input_path + '/density_data.txt')
-                    Log_Den, sfr_cut = data[pos][0], data[pos][2]
-                    
-                    m_data = np.load(input_path + '/sfr.npy')
-                    mask = m_data > sfr_cut
-                    
-                    x_m = x[mask]
-                    y_m = y[mask]
-                    z_m = z[mask]
-                    N = len(x_m)
-                    
-                    #DD = np.zeros(NBIN).astype('int32')
-                    SP.xi2(DD[i][j], x_m, y_m, z_m, N, Dmin, Dmax, NBIN, iNBin, ilim)
-                    print i,j
-                    RR_array[i][j] = np.array([RR(r, N, Bw) for r in bins])
-
-        return DD, RR_array
-    else:
-        if (type_cuts == 'Mstell') and (density_cuts <= 4) and (density_cuts > 0):
-            
-            pos = int(density_cuts * 5)
-            data  = np.loadtxt(input_path + '/density_data.txt')
-            Log_Den, mass_cut = data[pos][0], data[pos][1]
-            
-            m_data = np.load(input_path + '/stellarmass.npy')
-            mask = (m_data > mass_cut)
-
-            x_m = x[mask]
-            y_m = y[mask]
-            z_m = z[mask]
-            N = len(x_m)
-            
-            DD = np.zeros(NBIN).astype('int32')
-            SP.xi2(DD, x_m, y_m, z_m, N, Dmin, Dmax, NBIN, iNBin, ilim)
-            RR = np.array([RR(r, N, Bw) for r in bins])
-            return DD, RR
     
-        if type_cuts == 'SFR' and density_cuts <= 4 and density_cuts > 0:
-           
-            pos = int(density_cuts * 5)
-            data  = np.loadtxt(input_path + '/density_data.txt')
-            Log_Den, sfr_cut = data[pos][0], data[pos][2]
+    iscat = os.path.basename(os.path.normpath(input_path))
+ 
+    if iscat == 'Mock Catalogues':
+        #print "entre al if"
+        N = len(x)
+        
+        DD_array = np.zeros(NBIN).astype('int32')
+        import SPack as SP
+        #print "empeze a calcular el xi"
+        SP.xi2(DD_array, x, y, z, N, Dmin, Dmax, NBIN, iNBin, ilim)
+        RR_array = np.array([RR(r, N, Bw) for r in bins])
+        #print "termine"
+        return DD_array, RR_array
+    else:
+        #print "entre donde no debia"
+        if (type(type_cuts) == list) or (type(density_cuts) == list):
+            Len_densities, Len_types = 1, 1
             
-            m_data = np.load(input_path + '/sfr.npy')
-            mask = m_data > sfr_cut
+            if type(density_cuts) == list: Len_densities = len(density_cuts)
+            if type(type_cuts) == list: Len_types = len(type_cuts)
             
-            x_m = x[mask]
-            y_m = y[mask]
-            z_m = z[mask]
-            N = len(x_m)
+            DD = np.zeros((Len_types, Len_densities, NBIN)).astype('int32')
+            RR_array = np.zeros((Len_types, Len_densities, NBIN)).astype('float64')
             
-            DD = np.zeros(NBIN).astype('int32')
-            SP.xi2(DD, x_m, y_m, z_m, N, Dmin, Dmax, NBIN, iNBin, ilim)
-            RR = np.array([RR(r, N, Bw) for r in bins])
-            return DD, RR
+            if Len_densities == 1: density_cuts = [density_cuts]
+            if Len_types == 1: type_cuts = [type_cuts]
             
+            for i, Type in enumerate(type_cuts):
+                for j, Den in enumerate(density_cuts):
+                    if Type == 'Mstell' and Den <= 4 and Den > 0:
+                        pos = int(Den * 5)
+                        data  = np.loadtxt(input_path + '/density_data.txt')
+                        Log_Den, mass_cut = data[pos][0], data[pos][1]
+                        
+                        if Shuffle == True: m_data = np.load(input_path + '/stellarmass_shuffle.npy')
+                        else: m_data = np.load(input_path + '/stellarmass.npy')
+                        mask = m_data > mass_cut
+                        
+                        x_m = x[mask]
+                        y_m = y[mask]
+                        z_m = z[mask]
+                        N = len(x_m)
+                    
+                        import SPack as SP
+                        SP.xi2(DD[i][j], x_m, y_m, z_m, N, Dmin, Dmax, NBIN, iNBin, ilim)
+                        RR_array[i][j] = np.array([RR(r, N, Bw) for r in bins])
+                        
+                    if Type == 'SFR' and Den <= 4 and Den > 0:
+                        pos = int(Den * 5)
+                        data  = np.loadtxt(input_path + '/density_data.txt')
+                        Log_Den, sfr_cut = data[pos][0], data[pos][2]
+                        
+                        if Shuffle == True: m_data = np.load(input_path + '/sfr_shuffle.npy')
+                        else: m_data = np.load(input_path + '/sfr.npy')
+                        mask = m_data > sfr_cut
+                        
+                        x_m = x[mask]
+                        y_m = y[mask]
+                        z_m = z[mask]
+                        N = len(x_m)
+                        
+                        import SPack as SP
+                        SP.xi2(DD[i][j], x_m, y_m, z_m, N, Dmin, Dmax, NBIN, iNBin, ilim)
+                        RR_array[i][j] = np.array([RR(r, N, Bw) for r in bins])
+
+            return DD, RR_array
         else:
-            print "Error: select the correct parameters!"
+            if (type_cuts == 'Mstell') and (density_cuts <= 4) and (density_cuts > 0):
+                
+                pos = int(density_cuts * 5)
+                data  = np.loadtxt(input_path + '/density_data.txt')
+                Log_Den, mass_cut = data[pos][0], data[pos][1]
+                
+                if Shuffle == True: m_data = np.load(input_path + '/stellarmass_shuffle.npy')
+                else: m_data = np.load(input_path + '/stellarmass.npy')
+                mask = m_data > mass_cut
+                #m_data = np.load(input_path + '/stellarmass.npy')
+                #mask = (m_data > mass_cut)
+
+                x_m = x[mask]
+                y_m = y[mask]
+                z_m = z[mask]
+                N = len(x_m)
+                
+                import SPack as SP
+                DD = np.zeros(NBIN).astype('int32')
+                SP.xi2(DD, x_m, y_m, z_m, N, Dmin, Dmax, NBIN, iNBin, ilim)
+                RR = np.array([RR(r, N, Bw) for r in bins])
+                return DD, RR
+        
+            if type_cuts == 'SFR' and density_cuts <= 4 and density_cuts > 0:
+            
+                pos = int(density_cuts * 5)
+                data  = np.loadtxt(input_path + '/density_data.txt')
+                Log_Den, sfr_cut = data[pos][0], data[pos][2]
+                
+                if Shuffle == True: m_data = np.load(input_path + '/sfr_shuffle.npy')
+                else: m_data = np.load(input_path + '/sfr.npy')
+                mask = m_data > sfr_cut
+                
+                x_m = x[mask]
+                y_m = y[mask]
+                z_m = z[mask]
+                N = len(x_m)
+                
+                import SPack as SP
+                DD = np.zeros(NBIN).astype('int32')
+                SP.xi2(DD, x_m, y_m, z_m, N, Dmin, Dmax, NBIN, iNBin, ilim)
+                RR = np.array([RR(r, N, Bw) for r in bins])
+                return DD, RR
+                
+            else:
+                print "Error: select the correct parameters!"
