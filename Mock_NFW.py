@@ -2,11 +2,13 @@ def ToMakeMock (method, scatter= False, **inputs):
     import numpy as np
     import SPack as SP
     import math #TODO
+    from scipy.interpolate import interp1d
     
     m = inputs['model']
     type_cut = inputs['selection']
     if type_cut == 'Mstell': type_cut = 'Stellar Mass'
     d = inputs['density_cut']
+    fvir = int(inputs['rmax'])
     rhos = np.array([-3.5,-3.0,-2.5,-2.0,-1.5])
     s_density = 10**rhos[d-1]
     
@@ -17,8 +19,10 @@ def ToMakeMock (method, scatter= False, **inputs):
 
     # Add an status
     print("--- Building Mock Catalogue ---")
-    print "Density: %.5f" % s_density
+    print "Density: %.5f" %s_density
+    print "Method: %s" %method
     print "Scatter: %s " %s_scatter
+    print "Rmax: %i r200" %fvir
     
     model = m + "_millennium"
     path = "../Data/" + model
@@ -71,9 +75,13 @@ def ToMakeMock (method, scatter= False, **inputs):
     #dd = omega -1
     #delta = 18*np.pi**2 + 82*dd - 39*dd**2
     
-    h = 0.73
+    h = 0.704
+    Lbox = 500
+    omega_m = 0.272
+    omega_t = 1
+    
     def r200 (logM):
-        t = (h*10**logM)**(1./3)
+        t = (10**logM)**(1./3)  * (omega_m/omega_t)**(-1./3)
         return  (1.63e-2) * t * 1e3 # pc/h
         
     def conc (log_Mh,z):
@@ -85,14 +93,14 @@ def ToMakeMock (method, scatter= False, **inputs):
         return (200./3)* (c**3) /(np.log(1+c) -c/(1+c))
 
     def g(x):
-        return np.log(1+x) - x/(1+x)
+        return np.log(1+float(x)) - x/(1+float(x))   
     
     # ========================================= FULL HOD ======================================
     if method == 'Full-HOD':
         NBIN = 60
         ext_m = ''
         params = np.zeros((NBIN - 1, 2), dtype = np.float32)
-        bins, HOD, Cent, Sats = np.loadtxt( hod_path + '/hod_d%i_60b_med.txt' %d, unpack = True )
+        bins, HOD, Cent, Sats = np.loadtxt( hod_path + '/hod_d%i_60b.txt' %d, unpack = True )
         
         for i in range( NBIN-1 ):
             y1, y2 = HOD[i], HOD[i+1]
@@ -147,11 +155,28 @@ def ToMakeMock (method, scatter= False, **inputs):
         Ntot = int(np.sum(nn_gal) + len(nzeros))
         cat_data = np.zeros((Ntot,5),dtype = np.float32)
         k = 0
+        
+        
+        # === ONLY APPLY FOR CONSTANT CONCENTRATION ===
+        c = 13.981 #conc for a 10^12.5 Msun halo mass
+        x0 = np.linspace(0,1,1000)
+        y0 = np.zeros(1000)
+        for l in range(len(x0)):
+            r_norm0 = 1e-10
+            cmf0 = g(c*r_norm0)/g(fvir*c)
+            div = g(fvir*c)
+            while x0[l] > cmf0:
+                r_norm0 += 0.001
+                cmf0 = g(c*r_norm0)/div
+            y0[l] = r_norm0 
+        y0[-1] = fvir
+        spl = interp1d(x0, y0)
+        # ==============================================
 
 
         for i,n in enumerate(nn_gal):
             if n == 0: 
-                cat_data[k] = np.array([000, 000, 000, halomass_cen[i], -1]) # HALOES THAT DO NOT ENTER TO THE SAMPLE
+                cat_data[k] = np.array([-1, -1, -1, halomass_cen[i], -1]) # HALOES THAT DO NOT ENTER TO THE SAMPLE
                 k += 1
                 continue
             
@@ -159,67 +184,46 @@ def ToMakeMock (method, scatter= False, **inputs):
             k += 1
             if n == 1: continue
                 
-            c = 13.981    #TODO
+            #c = 13.981 
             #c = conc(halomass_cen[i], 0)
-
-            for j in range(int(n-1)):
+    
+            # TODO Generate n-1 random numbers instead one (Use Shuffle code as example)
+            j = 0
+            while j < n-1:
+                rr = np.random.rand()
+                r_norm = spl(rr)
+                #r_norm = 1e-10
+                #cmf = g(c*r_norm)/g(c)
                 
-                rr = np.random.random()
-                r_norm = 1e-10
-                cmf = g(c*r_norm)/g(c)
-                
-                while rr > cmf:
-                    r_norm += 0.001
-                    cmf = g(c*r_norm)/g(c)
+                #while rr > cmf:
+                #    r_norm += 0.001
+                #    cmf = g(c*r_norm)/g(c)
 
-                r = r_norm * r200(halomass_cen[i])
-                phi = np.random.rand(1)[0] * 2*np.pi
-                theta = np.random.rand(1)[0] * np.pi
+                r = r_norm * r200(halomass_cen[i])/1e6
+                phi = np.random.rand() * 2*np.pi
+                theta = np.random.rand() * np.pi
 
                 x = r*np.sin(theta)*np.cos(phi)
                 y = r*np.sin(theta)*np.sin(phi)
                 z = r*np.cos(theta)
                 
-                x_sat = x_cen[i] + x/1e6
-                if x_sat < 0: x_sat = x_sat + 500.
-                if x_sat > 500: x_sat = x_sat - 500
+                x_sat = x_cen[i] + x
+                if x_sat < 0: x_sat = x_sat + Lbox
+                if x_sat > Lbox: x_sat = x_sat - Lbox
 
-                y_sat = y_cen[i] + y/1e6
-                if y_sat < 0: y_sat = y_sat + 500.
-                if y_sat > 500: y_sat = y_sat - 500
+                y_sat = y_cen[i] + y
+                if y_sat < 0: y_sat = y_sat + Lbox
+                if y_sat > Lbox: y_sat = y_sat - Lbox
                 
-                z_sat = z_cen[i] + z/1e6
-                if z_sat < 0: z_sat = z_sat + 500.
-                if z_sat > 500: z_sat = z_sat - 500 
-                
-                #cat_data[i] = np.array([x_cen[j], y_cen[i], z_cen[i], halomass_cen[i], n])
+                z_sat = z_cen[i] + z
+                if z_sat < 0: z_sat = z_sat + Lbox
+                if z_sat > Lbox: z_sat = z_sat - Lbox 
+            
                 cat_data[k] = np.array([x_sat, y_sat, z_sat, halomass_cen[i], 1])
                 k += 1
-                
-        #X = cat_data[:,0]
-        #Y = cat_data[:,1]
-        #Z = cat_data[:,2]
-       
-        #neg_valx = np.where( X <  0  )[0]
-        #pos_valx = np.where( X > 512 )[0]
-        #neg_valy = np.where( Y <  0  )[0]
-        #pos_valy = np.where( Y > 512 )[0]
-        #neg_valz = np.where( Z <  0  )[0]
-        #pos_valz = np.where( Z > 512 )[0]
+                j += 1
         
-        #m=np.where(a > 3)[0]
-        #if len(neg_valx) != 0: X[neg_valx] = np.array([X[neg_valx][i] + 512 for i in range(len(neg_valx))])
-        #if len(pos_valx) != 0: X[pos_valx] = np.array([X[pos_valx][i] - 512 for i in range(len(pos_valx))])
-        #if len(neg_valy) != 0: Y[neg_valy] = np.array([Y[neg_valy][i] + 512 for i in range(len(neg_valy))])
-        #if len(pos_valy) != 0: Y[pos_valy] = np.array([Y[pos_valy][i] - 512 for i in range(len(pos_valy))])
-        #if len(neg_valz) != 0: Z[neg_valz] = np.array([Z[neg_valz][i] + 512 for i in range(len(neg_valz))])
-        #if len(pos_valz) != 0: Z[pos_valz] = np.array([Z[pos_valz][i] - 512 for i in range(len(pos_valz))])
-        
-        #cat_data[:,0] = X
-        #cat_data[:,1] = Y
-        #cat_data[:,2] = Z
-        
-        np.save(cat_path + '/cat_d%i%s%s%s_60b_nfw_3' %(d, ext_m, ext_scat, ext_sp), cat_data)  
+        np.save(cat_path + '/cat_d%i%s%s%s_%irvir' %(d, ext_m, ext_scat, ext_sp, fvir), cat_data)  
         # ext_m = 2HOD/_4HOD
         # ext_scat = poisson
         # ext_sp = ms/ls
@@ -324,7 +328,6 @@ def ToMakeMock (method, scatter= False, **inputs):
         N_cen_nosat += 1e-10
         N_sat_cen += 1e-10
         N_sat_nocen += 1e-10
-        
         
         fofid = np.load( path + '/fofid.npy' )
         
